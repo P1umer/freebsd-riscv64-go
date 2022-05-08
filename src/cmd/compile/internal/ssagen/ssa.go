@@ -3920,7 +3920,8 @@ func InitTables() {
 			}
 			return s.newValue2(ssa.OpMul64uover, types.NewTuple(types.Types[types.TUINT], types.Types[types.TUINT]), args[0], args[1])
 		},
-		sys.AMD64, sys.I386, sys.MIPS64, sys.RISCV64)
+		sys.AMD64, sys.I386, sys.Loong64, sys.MIPS64, sys.RISCV64)
+	alias("runtime", "mulUintptr", "runtime/internal/math", "MulUintptr", all...)
 	add("runtime", "KeepAlive",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			data := s.newValue1(ssa.OpIData, s.f.Config.Types.BytePtr, args[0])
@@ -3997,21 +3998,21 @@ func InitTables() {
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT32], v)
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Load8",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue2(ssa.OpAtomicLoad8, types.NewTuple(types.Types[types.TUINT8], types.TypeMem), args[0], s.mem())
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT8], v)
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Load64",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue2(ssa.OpAtomicLoad64, types.NewTuple(types.Types[types.TUINT64], types.TypeMem), args[0], s.mem())
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT64], v)
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "LoadAcq",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue2(ssa.OpAtomicLoadAcq32, types.NewTuple(types.Types[types.TUINT32], types.TypeMem), args[0], s.mem())
@@ -4032,32 +4033,32 @@ func InitTables() {
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, s.f.Config.Types.BytePtr, v)
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 
 	addF("runtime/internal/atomic", "Store",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			s.vars[memVar] = s.newValue3(ssa.OpAtomicStore32, types.TypeMem, args[0], args[1], s.mem())
 			return nil
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Store8",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			s.vars[memVar] = s.newValue3(ssa.OpAtomicStore8, types.TypeMem, args[0], args[1], s.mem())
 			return nil
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Store64",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			s.vars[memVar] = s.newValue3(ssa.OpAtomicStore64, types.TypeMem, args[0], args[1], s.mem())
 			return nil
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "StorepNoWB",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			s.vars[memVar] = s.newValue3(ssa.OpAtomicStorePtrNoWB, types.TypeMem, args[0], args[1], s.mem())
 			return nil
 		},
-		sys.AMD64, sys.ARM64, sys.MIPS, sys.MIPS64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "StoreRel",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			s.vars[memVar] = s.newValue3(ssa.OpAtomicStoreRel32, types.TypeMem, args[0], args[1], s.mem())
@@ -4077,14 +4078,14 @@ func InitTables() {
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT32], v)
 		},
-		sys.AMD64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Xchg64",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue3(ssa.OpAtomicExchange64, types.NewTuple(types.Types[types.TUINT64], types.TypeMem), args[0], args[1], s.mem())
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT64], v)
 		},
-		sys.AMD64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.Loong64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 
 	type atomicOpEmitter func(s *state, n *ir.CallExpr, args []*ssa.Value, op ssa.Op, typ types.Kind)
 
@@ -4142,14 +4143,14 @@ func InitTables() {
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT32], v)
 		},
-		sys.AMD64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Xadd64",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue3(ssa.OpAtomicAdd64, types.NewTuple(types.Types[types.TUINT64], types.TypeMem), args[0], args[1], s.mem())
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TUINT64], v)
 		},
-		sys.AMD64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.Loong64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 
 	addF("runtime/internal/atomic", "Xadd",
 		makeAtomicGuardedIntrinsicARM64(ssa.OpAtomicAdd32, ssa.OpAtomicAdd32Variant, types.TUINT32, types.TUINT32, atomicXchgXaddEmitterARM64),
@@ -4164,14 +4165,14 @@ func InitTables() {
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TBOOL], v)
 		},
-		sys.AMD64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "Cas64",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue4(ssa.OpAtomicCompareAndSwap64, types.NewTuple(types.Types[types.TBOOL], types.TypeMem), args[0], args[1], args[2], s.mem())
 			s.vars[memVar] = s.newValue1(ssa.OpSelect1, types.TypeMem, v)
 			return s.newValue1(ssa.OpSelect0, types.Types[types.TBOOL], v)
 		},
-		sys.AMD64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
+		sys.AMD64, sys.Loong64, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X)
 	addF("runtime/internal/atomic", "CasRel",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			v := s.newValue4(ssa.OpAtomicCompareAndSwap32, types.NewTuple(types.Types[types.TBOOL], types.TypeMem), args[0], args[1], args[2], s.mem())
@@ -4287,7 +4288,7 @@ func InitTables() {
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			return s.newValue1(ssa.OpSqrt, types.Types[types.TFLOAT64], args[0])
 		},
-		sys.I386, sys.AMD64, sys.ARM, sys.ARM64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X, sys.Wasm)
+		sys.I386, sys.AMD64, sys.ARM, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64, sys.PPC64, sys.RISCV64, sys.S390X, sys.Wasm)
 	addF("math", "Trunc",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			return s.newValue1(ssa.OpTrunc, types.Types[types.TFLOAT64], args[0])
@@ -4674,7 +4675,7 @@ func InitTables() {
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			return s.newValue2(ssa.OpMul64uhilo, types.NewTuple(types.Types[types.TUINT64], types.Types[types.TUINT64]), args[0], args[1])
 		},
-		sys.AMD64, sys.ARM64, sys.PPC64, sys.S390X, sys.MIPS64, sys.RISCV64)
+		sys.AMD64, sys.ARM64, sys.PPC64, sys.S390X, sys.MIPS64, sys.RISCV64, sys.Loong64)
 	alias("math/bits", "Mul", "math/bits", "Mul64", p8...)
 	alias("runtime/internal/math", "Mul64", "math/bits", "Mul64", p8...)
 	addF("math/bits", "Add64",
@@ -4687,7 +4688,7 @@ func InitTables() {
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
 			return s.newValue3(ssa.OpSub64borrow, types.NewTuple(types.Types[types.TUINT64], types.Types[types.TUINT64]), args[0], args[1], args[2])
 		},
-		sys.AMD64, sys.ARM64, sys.S390X)
+		sys.AMD64, sys.ARM64, sys.PPC64, sys.S390X)
 	alias("math/bits", "Sub", "math/bits", "Sub64", sys.ArchAMD64, sys.ArchARM64, sys.ArchS390X)
 	addF("math/bits", "Div64",
 		func(s *state, n *ir.CallExpr, args []*ssa.Value) *ssa.Value {
@@ -4759,9 +4760,6 @@ func findIntrinsic(sym *types.Sym) intrinsicBuilder {
 		return nil
 	}
 	pkg := sym.Pkg.Path
-	if sym.Pkg == types.LocalPkg {
-		pkg = base.Ctxt.Pkgpath
-	}
 	if sym.Pkg == ir.Pkgs.Runtime {
 		pkg = "runtime"
 	}
@@ -6221,22 +6219,25 @@ func (s *state) dottype(n *ir.TypeAssertExpr, commaok bool) (res, resok *ssa.Val
 	iface := s.expr(n.X)              // input interface
 	target := s.reflectType(n.Type()) // target type
 	var targetItab *ssa.Value
-	if n.Itab != nil {
-		targetItab = s.expr(n.Itab)
+	if n.ITab != nil {
+		targetItab = s.expr(n.ITab)
 	}
 	return s.dottype1(n.Pos(), n.X.Type(), n.Type(), iface, target, targetItab, commaok)
 }
 
 func (s *state) dynamicDottype(n *ir.DynamicTypeAssertExpr, commaok bool) (res, resok *ssa.Value) {
 	iface := s.expr(n.X)
-	target := s.expr(n.T)
-	var itab *ssa.Value
+	var target, targetItab *ssa.Value
 	if !n.X.Type().IsEmptyInterface() && !n.Type().IsInterface() {
 		byteptr := s.f.Config.Types.BytePtr
-		itab = target
-		target = s.load(byteptr, s.newValue1I(ssa.OpOffPtr, byteptr, int64(types.PtrSize), itab)) // itab.typ
+		targetItab = s.expr(n.ITab)
+		// TODO(mdempsky): Investigate whether compiling n.RType could be
+		// better than loading itab.typ.
+		target = s.load(byteptr, s.newValue1I(ssa.OpOffPtr, byteptr, int64(types.PtrSize), targetItab)) // itab.typ
+	} else {
+		target = s.expr(n.RType)
 	}
-	return s.dottype1(n.Pos(), n.X.Type(), n.Type(), iface, target, itab, commaok)
+	return s.dottype1(n.Pos(), n.X.Type(), n.Type(), iface, target, targetItab, commaok)
 }
 
 // dottype1 implements a x.(T) operation. iface is the argument (x), dst is the type we're asserting to (T)
@@ -7095,7 +7096,7 @@ func genssa(f *ssa.Func, pp *objw.Progs) {
 		if e.curfn.ABI == obj.ABIInternal && base.Flag.N != 0 {
 			ssa.BuildFuncDebugNoOptimized(base.Ctxt, f, base.Debug.LocationLists > 1, StackOffset, debugInfo)
 		} else {
-			ssa.BuildFuncDebug(base.Ctxt, f, base.Debug.LocationLists > 1, StackOffset, debugInfo)
+			ssa.BuildFuncDebug(base.Ctxt, f, base.Debug.LocationLists, StackOffset, debugInfo)
 		}
 		bstart := s.bstart
 		idToIdx := make([]int, f.NumBlocks())
@@ -7614,7 +7615,7 @@ func (s *State) Call(v *ssa.Value) *obj.Prog {
 		switch Arch.LinkArch.Family {
 		case sys.AMD64, sys.I386, sys.PPC64, sys.RISCV64, sys.S390X, sys.Wasm:
 			p.To.Type = obj.TYPE_REG
-		case sys.ARM, sys.ARM64, sys.MIPS, sys.MIPS64:
+		case sys.ARM, sys.ARM64, sys.Loong64, sys.MIPS, sys.MIPS64:
 			p.To.Type = obj.TYPE_MEM
 		default:
 			base.Fatalf("unknown indirect call family")

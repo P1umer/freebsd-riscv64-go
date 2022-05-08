@@ -25,10 +25,12 @@ package syscall
 #include <termios.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/capsicum.h>
 #include <sys/event.h>
 #include <sys/mman.h>
 #include <sys/mount.h>
 #include <sys/param.h>
+#include <sys/poll.h>
 #include <sys/ptrace.h>
 #include <sys/resource.h>
 #include <sys/select.h>
@@ -38,6 +40,7 @@ package syscall
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/utsname.h>
 #include <sys/wait.h>
 #include <net/bpf.h>
 #include <net/if.h>
@@ -323,10 +326,35 @@ type BpfZbufHeader C.struct_bpf_zbuf_header
 
 const (
 	_AT_FDCWD            = C.AT_FDCWD
+	_AT_REMOVEDIR        = C.AT_REMOVEDIR
 	_AT_SYMLINK_FOLLOW   = C.AT_SYMLINK_FOLLOW
 	_AT_SYMLINK_NOFOLLOW = C.AT_SYMLINK_NOFOLLOW
 )
 
+type CapRights C.struct_cap_rights
+
+type Utsname C.struct_utsname
+
 // Terminal handling
 
 type Termios C.struct_termios
+
+type Winsize C.struct_winsize
+
+// Syscall
+
+type PollFd C.struct_pollfd
+
+const (
+	POLLERR = C.POLLERR
+	POLLHUP = C.POLLHUP
+	POLLIN  = C.POLLIN
+	POLLINIGNEOF = C.POLLINIGNEOF
+	POLLNVAL = C.POLLNVAL
+	POLLOUT = C.POLLOUT
+	POLLPRI = C.POLLPRI
+	POLLRDBAND = C.POLLRDBAND
+	POLLRDNORM = C.POLLRDNORM
+	POLLWRBAND = C.POLLWRBAND
+	POLLWRNORM = C.POLLWRNORM
+)

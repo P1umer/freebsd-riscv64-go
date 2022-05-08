@@ -1699,16 +1699,21 @@ func runBinHostname(t *testing.T) string {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	const path = "/bin/hostname"
+
+	path, err := osexec.LookPath("hostname")
+	if err != nil {
+		if errors.Is(err, osexec.ErrNotFound) {
+			t.Skip("skipping test; test requires hostname but it does not exist")
+		}
+		t.Fatal(err)
+	}
+
 	argv := []string{"hostname"}
 	if runtime.GOOS == "aix" {
 		argv = []string{"hostname", "-s"}
 	}
 	p, err := StartProcess(path, argv, &ProcAttr{Files: []*File{nil, w, Stderr}})
 	if err != nil {
-		if _, err := Stat(path); IsNotExist(err) {
-			t.Skipf("skipping test; test requires %s but it does not exist", path)
-		}
 		t.Fatal(err)
 	}
 	w.Close()
@@ -1736,7 +1741,7 @@ func runBinHostname(t *testing.T) string {
 
 func testWindowsHostname(t *testing.T, hostname string) {
 	cmd := osexec.Command("hostname")
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("Failed to execute hostname command: %v %s", err, out)
 	}

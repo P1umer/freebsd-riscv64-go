@@ -63,8 +63,8 @@ type Addr struct {
 	z *intern.Value
 }
 
-// z0, z4, and z6noz are sentinel IP.z values.
-// See the IP type's field docs.
+// z0, z4, and z6noz are sentinel Addr.z values.
+// See the Addr type's field docs.
 var (
 	z0    = (*intern.Value)(nil)
 	z4    = new(intern.Value)
@@ -474,7 +474,7 @@ func (ip Addr) Is6() bool {
 
 // Unmap returns ip with any IPv4-mapped IPv6 address prefix removed.
 //
-// That is, if ip is an IPv6 address wrapping an IPv4 adddress, it
+// That is, if ip is an IPv6 address wrapping an IPv4 address, it
 // returns the wrapped IPv4 address. Otherwise it returns ip unmodified.
 func (ip Addr) Unmap() Addr {
 	if ip.Is4In6() {
@@ -498,7 +498,7 @@ func (ip Addr) WithZone(zone string) Addr {
 	return ip
 }
 
-// withoutZone unconditionally strips the zone from IP.
+// withoutZone unconditionally strips the zone from ip.
 // It's similar to WithZone, but small enough to be inlinable.
 func (ip Addr) withoutZone() Addr {
 	if !ip.Is6() {
@@ -508,7 +508,7 @@ func (ip Addr) withoutZone() Addr {
 	return ip
 }
 
-// hasZone reports whether IP has an IPv6 zone.
+// hasZone reports whether ip has an IPv6 zone.
 func (ip Addr) hasZone() bool {
 	return ip.z != z0 && ip.z != z4 && ip.z != z6noz
 }
@@ -768,11 +768,10 @@ func (ip Addr) String() string {
 		return ip.string4()
 	default:
 		if ip.Is4In6() {
-			// TODO(bradfitz): this could alloc less.
 			if z := ip.Zone(); z != "" {
-				return "::ffff:" + ip.Unmap().String() + "%" + z
+				return "::ffff:" + ip.Unmap().string4() + "%" + z
 			} else {
-				return "::ffff:" + ip.Unmap().String()
+				return "::ffff:" + ip.Unmap().string4()
 			}
 		}
 		return ip.string6()

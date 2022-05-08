@@ -11,13 +11,20 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"runtime"
 	"strconv"
 	"strings"
 )
 
 func assert(p bool) {
 	if !p {
-		panic("assertion failed")
+		msg := "assertion failed"
+		// Include information about the assertion location. Due to panic recovery,
+		// this location is otherwise buried in the middle of the panicking stack.
+		if _, file, line, ok := runtime.Caller(1); ok {
+			msg = fmt.Sprintf("%s:%d: %s", file, line, msg)
+		}
+		panic(msg)
 	}
 }
 
@@ -274,6 +281,17 @@ func (check *Checker) errorf(at positioner, code errorCode, format string, args 
 func (check *Checker) softErrorf(at positioner, code errorCode, format string, args ...any) {
 	err := newErrorf(at, code, format, args...)
 	err.soft = true
+	check.report(err)
+}
+
+func (check *Checker) versionErrorf(at positioner, code errorCode, goVersion string, format string, args ...interface{}) {
+	msg := check.sprintf(format, args...)
+	var err *error_
+	if compilerErrorMessages {
+		err = newErrorf(at, code, "%s requires %s or later (-lang was set to %s; check go.mod)", msg, goVersion, check.conf.GoVersion)
+	} else {
+		err = newErrorf(at, code, "%s requires %s or later", msg, goVersion)
+	}
 	check.report(err)
 }
 

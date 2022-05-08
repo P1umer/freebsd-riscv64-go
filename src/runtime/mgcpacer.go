@@ -63,9 +63,9 @@ const (
 	defaultHeapMinimum = (goexperiment.HeapMinimum512KiBInt)*(512<<10) +
 		(1-goexperiment.HeapMinimum512KiBInt)*(4<<20)
 
-	// scannableStackSizeSlack is the bytes of stack space allocated or freed
+	// maxStackScanSlack is the bytes of stack space allocated or freed
 	// that can accumulate on a P before updating gcController.stackSize.
-	scannableStackSizeSlack = 8 << 10
+	maxStackScanSlack = 8 << 10
 
 	// memoryLimitHeapGoalHeadroom is the amount of headroom the pacer gives to
 	// the heap goal when operating in the memory-limited regime. That is,
@@ -227,13 +227,11 @@ type gcControllerState struct {
 	// Updated when the world is stopped.
 	lastHeapScan uint64
 
-	// stackScan is a snapshot of scannableStackSize taken at each GC
-	// STW pause and is used in pacing decisions.
-	//
-	// Updated only while the world is stopped.
-	stackScan uint64
+	// lastStackScan is the number of bytes of stack that were scanned
+	// last GC cycle.
+	lastStackScan uint64
 
-	// scannableStackSize is the amount of allocated goroutine stack space in
+	// maxStackScan is the amount of allocated goroutine stack space in
 	// use by goroutines.
 	//
 	// This number tracks allocated goroutine stack space rather than used
@@ -243,7 +241,7 @@ type gcControllerState struct {
 	// to conservatively overcount than undercount.
 	//
 	// Read and updated atomically.
-	scannableStackSize uint64
+	maxStackScan uint64
 
 	// globalsScan is the total amount of global variable space
 	// that is scannable.
@@ -269,8 +267,8 @@ type gcControllerState struct {
 	// Currently these are measured in bytes. For most uses, this is an
 	// opaque unit of work, but for estimation the definition is important.
 	//
-	// Note that stackScanWork includes all allocated space, not just the
-	// size of the stack itself, mirroring stackSize.
+	// Note that stackScanWork includes only stack space scanned, not all
+	// of the allocated stack.
 	heapScanWork    atomic.Int64
 	stackScanWork   atomic.Int64
 	globalsScanWork atomic.Int64
@@ -441,7 +439,6 @@ func (c *gcControllerState) startCycle(markStartTime int64, procs int, trigger g
 	c.fractionalMarkTime = 0
 	c.idleMarkTime = 0
 	c.markStartTime = markStartTime
-	c.stackScan = atomic.Load64(&c.scannableStackSize)
 	c.triggered = c.heapLive
 
 	// Compute the background mark utilization goal. In general,
@@ -553,13 +550,15 @@ func (c *gcControllerState) revise() {
 	heapGoal := int64(c.heapGoal())
 
 	// The expected scan work is computed as the amount of bytes scanned last
-	// GC cycle, plus our estimate of stacks and globals work for this cycle.
-	scanWorkExpected := int64(c.lastHeapScan + c.stackScan + c.globalsScan)
+	// GC cycle (both heap and stack), plus our estimate of globals work for this cycle.
+	scanWorkExpected := int64(c.lastHeapScan + c.lastStackScan + c.globalsScan)
 
 	// maxScanWork is a worst-case estimate of the amount of scan work that
 	// needs to be performed in this GC cycle. Specifically, it represents
-	// the case where *all* scannable memory turns out to be live.
-	maxScanWork := int64(scan + c.stackScan + c.globalsScan)
+	// the case where *all* scannable memory turns out to be live, and
+	// *all* allocated stack space is scannable.
+	maxStackScan := atomic.Load64(&c.maxStackScan)
+	maxScanWork := int64(scan + maxStackScan + c.globalsScan)
 	if work > scanWorkExpected {
 		// We've already done more scan work than expected. Because our expectation
 		// is based on a steady-state scannable heap size, we assume this means our
@@ -732,12 +731,11 @@ func (c *gcControllerState) endCycle(now int64, procs int, userForced bool) {
 	}
 
 	if debug.gcpacertrace > 0 {
-		heapGoal := c.heapGoal()
 		printlock()
 		goal := gcGoalUtilization * 100
 		print("pacer: ", int(utilization*100), "% CPU (", int(goal), " exp.) for ")
-		print(c.heapScanWork.Load(), "+", c.stackScanWork.Load(), "+", c.globalsScanWork.Load(), " B work (", c.lastHeapScan+c.stackScan+c.globalsScan, " B exp.) ")
-		print("in ", c.triggered, " B -> ", c.heapLive, " B (∆goal ", int64(c.heapLive)-int64(heapGoal), ", cons/mark ", oldConsMark, ")")
+		print(c.heapScanWork.Load(), "+", c.stackScanWork.Load(), "+", c.globalsScanWork.Load(), " B work (", c.lastHeapScan+c.lastStackScan+c.globalsScan, " B exp.) ")
+		print("in ", c.triggered, " B -> ", c.heapLive, " B (∆goal ", int64(c.heapLive)-int64(c.lastHeapGoal), ", cons/mark ", oldConsMark, ")")
 		if !ok {
 			print("[controller reset]")
 		}
@@ -791,7 +789,7 @@ func (c *gcControllerState) enlistWorker() {
 
 // findRunnableGCWorker returns a background mark worker for _p_ if it
 // should be run. This must only be called when gcBlackenEnabled != 0.
-func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
+func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) (*g, int64) {
 	if gcBlackenEnabled == 0 {
 		throw("gcControllerState.findRunnable: blackening not enabled")
 	}
@@ -800,8 +798,11 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
 	// hasn't had an update in a while. This check is necessary in
 	// case the limiter is on but hasn't been checked in a while and
 	// so may have left sufficient headroom to turn off again.
+	if now == 0 {
+		now = nanotime()
+	}
 	if gcCPULimiter.needUpdate(now) {
-		gcCPULimiter.update(gcController.assistTime.Load(), now)
+		gcCPULimiter.update(now)
 	}
 
 	if !gcMarkWorkAvailable(_p_) {
@@ -809,7 +810,7 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
 		// the end of the mark phase when there are still
 		// assists tapering off. Don't bother running a worker
 		// now because it'll just return immediately.
-		return nil
+		return nil, now
 	}
 
 	// Grab a worker before we commit to running below.
@@ -826,7 +827,7 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
 		// it will always do so with queued global work. Thus, that P
 		// will be immediately eligible to re-run the worker G it was
 		// just using, ensuring work can complete.
-		return nil
+		return nil, now
 	}
 
 	decIfPositive := func(ptr *int64) bool {
@@ -849,7 +850,7 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
 	} else if c.fractionalUtilizationGoal == 0 {
 		// No need for fractional workers.
 		gcBgMarkWorkerPool.push(&node.node)
-		return nil
+		return nil, now
 	} else {
 		// Is this P behind on the fractional utilization
 		// goal?
@@ -859,7 +860,7 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
 		if delta > 0 && float64(_p_.gcFractionalMarkTime)/float64(delta) > c.fractionalUtilizationGoal {
 			// Nope. No need to run a fractional worker.
 			gcBgMarkWorkerPool.push(&node.node)
-			return nil
+			return nil, now
 		}
 		// Run a fractional worker.
 		_p_.gcMarkWorkerMode = gcMarkWorkerFractionalMode
@@ -871,7 +872,7 @@ func (c *gcControllerState) findRunnableGCWorker(_p_ *p, now int64) *g {
 	if trace.enabled {
 		traceGoUnpark(gp, 0)
 	}
-	return gp
+	return gp, now
 }
 
 // resetLive sets up the controller state for the next mark phase after the end
@@ -884,6 +885,7 @@ func (c *gcControllerState) resetLive(bytesMarked uint64) {
 	c.heapLive = bytesMarked
 	c.heapScan = uint64(c.heapScanWork.Load())
 	c.lastHeapScan = uint64(c.heapScanWork.Load())
+	c.lastStackScan = uint64(c.stackScanWork.Load())
 	c.triggered = ^uint64(0) // Reset triggered.
 
 	// heapLive was updated, so emit a trace event.
@@ -935,13 +937,13 @@ func (c *gcControllerState) update(dHeapLive, dHeapScan int64) {
 
 func (c *gcControllerState) addScannableStack(pp *p, amount int64) {
 	if pp == nil {
-		atomic.Xadd64(&c.scannableStackSize, amount)
+		atomic.Xadd64(&c.maxStackScan, amount)
 		return
 	}
-	pp.scannableStackSizeDelta += amount
-	if pp.scannableStackSizeDelta >= scannableStackSizeSlack || pp.scannableStackSizeDelta <= -scannableStackSizeSlack {
-		atomic.Xadd64(&c.scannableStackSize, pp.scannableStackSizeDelta)
-		pp.scannableStackSizeDelta = 0
+	pp.maxStackScanDelta += amount
+	if pp.maxStackScanDelta >= maxStackScanSlack || pp.maxStackScanDelta <= -maxStackScanSlack {
+		atomic.Xadd64(&c.maxStackScan, pp.maxStackScanDelta)
+		pp.maxStackScanDelta = 0
 	}
 }
 
@@ -1044,7 +1046,7 @@ func (c *gcControllerState) memoryLimitHeapGoal() uint64 {
 	//
 	// Let's take a step back. In an ideal world, this term would look something like just
 	// the heap goal. That is, we "reserve" enough space for the heap to grow to the heap
-	// goal, and subtract out everything else. This is of course impossible; the defintion
+	// goal, and subtract out everything else. This is of course impossible; the definition
 	// is circular! However, this impossible definition contains a key insight: the amount
 	// we're *going* to use matters just as much as whatever we're currently using.
 	//
@@ -1153,7 +1155,7 @@ func (c *gcControllerState) trigger() (uint64, uint64) {
 
 	// Below this point, c.heapMarked < goal.
 
-	// heapMarked is our absolute minumum, and it's possible the trigger
+	// heapMarked is our absolute minimum, and it's possible the trigger
 	// bound we get from heapGoalinternal is less than that.
 	if minTrigger < c.heapMarked {
 		minTrigger = c.heapMarked
@@ -1248,7 +1250,7 @@ func (c *gcControllerState) commit(isSweepDone bool) {
 	// plus additional runway for non-heap sources of GC work.
 	gcPercentHeapGoal := ^uint64(0)
 	if gcPercent := c.gcPercent.Load(); gcPercent >= 0 {
-		gcPercentHeapGoal = c.heapMarked + (c.heapMarked+atomic.Load64(&c.stackScan)+atomic.Load64(&c.globalsScan))*uint64(gcPercent)/100
+		gcPercentHeapGoal = c.heapMarked + (c.heapMarked+atomic.Load64(&c.lastStackScan)+atomic.Load64(&c.globalsScan))*uint64(gcPercent)/100
 	}
 	// Apply the minimum heap size here. It's defined in terms of gcPercent
 	// and is only updated by functions that call commit.
@@ -1280,7 +1282,7 @@ func (c *gcControllerState) commit(isSweepDone bool) {
 	// Furthermore, by setting the runway so that CPU resources are divided
 	// this way, assuming that the cons/mark ratio is correct, we make that
 	// division a reality.
-	c.runway.Store(uint64((c.consMark * (1 - gcGoalUtilization) / (gcGoalUtilization)) * float64(c.lastHeapScan+c.stackScan+c.globalsScan)))
+	c.runway.Store(uint64((c.consMark * (1 - gcGoalUtilization) / (gcGoalUtilization)) * float64(c.lastHeapScan+c.lastStackScan+c.globalsScan)))
 }
 
 // setGCPercent updates gcPercent. commit must be called after.
@@ -1456,6 +1458,7 @@ func (c *piController) reset() {
 // If this returns false, the caller must NOT become an idle mark worker.
 //
 // nosplit because it may be called without a P.
+//
 //go:nosplit
 func (c *gcControllerState) addIdleMarkWorker() bool {
 	for {
@@ -1483,6 +1486,7 @@ func (c *gcControllerState) addIdleMarkWorker() bool {
 // useful for a quick check before an expensive operation.
 //
 // nosplit because it may be called without a P.
+//
 //go:nosplit
 func (c *gcControllerState) needIdleMarkWorker() bool {
 	p := c.idleMarkWorkers.Load()

@@ -241,6 +241,7 @@ type keventt struct {
 	fflags uint32
 	data   int64
 	udata  *byte
+	ext    [4]uint64
 }
 
 type bintime struct {

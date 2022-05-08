@@ -216,7 +216,6 @@ const (
 	SYS_GETRESUID                = 360 // { int getresuid(uid_t *ruid, uid_t *euid, \
 	SYS_GETRESGID                = 361 // { int getresgid(gid_t *rgid, gid_t *egid, \
 	SYS_KQUEUE                   = 362 // { int kqueue(void); }
-	SYS_KEVENT                   = 363 // { int kevent(int fd, \
 	SYS_EXTATTR_SET_FD           = 371 // { ssize_t extattr_set_fd(int fd, \
 	SYS_EXTATTR_GET_FD           = 372 // { ssize_t extattr_get_fd(int fd, \
 	SYS_EXTATTR_DELETE_FD        = 373 // { int extattr_delete_fd(int fd, \
@@ -348,4 +347,5 @@ const (
 	SYS_PIPE2                    = 542 // { int pipe2(int *fildes, int flags); }
 	SYS_PROCCTL                  = 544 // { int procctl(idtype_t idtype, id_t id, \
 	SYS_UTIMENSAT                = 547 // { int utimensat(int fd, \
+	SYS_KEVENT                   = 560 // { int kevent(int kq, const struct kevent *changelist, int nchanges, struct kevent *eventlist, int nevents, const struct timespec *timeout); }
 )

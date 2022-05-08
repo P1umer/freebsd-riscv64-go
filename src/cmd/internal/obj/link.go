@@ -442,6 +442,7 @@ const (
 	ABasePPC64
 	ABaseARM64
 	ABaseMIPS
+	ABaseLoong64
 	ABaseRISCV
 	ABaseS390X
 	ABaseWasm
@@ -898,11 +899,12 @@ type Link struct {
 	Flag_linkshared    bool
 	Flag_optimize      bool
 	Flag_locationlists bool
+	Flag_noRefName     bool   // do not include referenced symbol names in object file
 	Retpoline          bool   // emit use of retpoline stubs for indirect jmp/call
 	Flag_maymorestack  string // If not "", call this function before stack checks
 	Bso                *bufio.Writer
 	Pathname           string
-	Pkgpath            string           // the current package's import path, "" if unknown
+	Pkgpath            string           // the current package's import path
 	hashmu             sync.Mutex       // protects hash, funchash
 	hash               map[string]*LSym // name -> sym mapping
 	funchash           map[string]*LSym // name -> sym mapping for ABIInternal syms

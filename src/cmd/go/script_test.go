@@ -81,6 +81,7 @@ func TestScript(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			ctx, cancel := context.WithCancel(ctx)
+			defer cancel()
 			ts := &testScript{
 				t:           t,
 				ctx:         ctx,
@@ -94,7 +95,6 @@ func TestScript(t *testing.T) {
 				defer removeAll(ts.workdir)
 			}
 			ts.run()
-			cancel()
 		})
 	}
 }
@@ -190,6 +190,14 @@ func (ts *testScript) setup() {
 		"/=" + string(os.PathSeparator),
 		"CMDGO_TEST_RUN_MAIN=true",
 	}
+	if testenv.Builder() != "" || os.Getenv("GIT_TRACE_CURL") == "1" {
+		// To help diagnose https://go.dev/issue/52545,
+		// enable tracing for Git HTTPS requests.
+		ts.env = append(ts.env,
+			"GIT_TRACE_CURL=1",
+			"GIT_TRACE_CURL_NO_DATA=1",
+			"GIT_REDACT_COOKIES=o,SSO,GSSO_Uberproxy")
+	}
 	if !testenv.HasExternalNetwork() {
 		ts.env = append(ts.env, "TESTGONETWORK=panic", "TESTGOVCS=panic")
 	}
@@ -210,6 +218,9 @@ func (ts *testScript) setup() {
 			ts.envMap[kv[:i]] = kv[i+1:]
 		}
 	}
+
+	fmt.Fprintf(&ts.log, "# (%s)\n", time.Now().UTC().Format(time.RFC3339))
+	ts.mark = ts.log.Len()
 }
 
 // goVersion returns the current Go version.

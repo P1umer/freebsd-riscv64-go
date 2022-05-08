@@ -44,6 +44,7 @@ import "unsafe"
 //
 // Don't split the stack as this function may be invoked without a valid G,
 // which prevents us from allocating more stack.
+//
 //go:nosplit
 func sysAlloc(n uintptr, sysStat *sysMemStat) unsafe.Pointer {
 	sysStat.add(int64(n))
@@ -69,7 +70,7 @@ func sysUnused(v unsafe.Pointer, n uintptr) {
 //
 // This operation is idempotent for memory already in the Prepared state, so
 // it is safe to refer, with v and n, to a range of memory that includes both
-// Prepared and Ready memory. However, the caller must provide the exact amout
+// Prepared and Ready memory. However, the caller must provide the exact amount
 // of Prepared memory for accounting purposes.
 func sysUsed(v unsafe.Pointer, n, prepared uintptr) {
 	gcController.mappedReady.Add(int64(prepared))
@@ -94,6 +95,7 @@ func sysHugePage(v unsafe.Pointer, n uintptr) {
 //
 // Don't split the stack as this function may be invoked without a valid G,
 // which prevents us from allocating more stack.
+//
 //go:nosplit
 func sysFree(v unsafe.Pointer, n uintptr, sysStat *sysMemStat) {
 	sysStat.add(-int64(n))

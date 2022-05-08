@@ -70,8 +70,10 @@ func Main(archInit func(*ssagen.ArchInfo)) {
 	// See bugs 31188 and 21945 (CLs 170638, 98075, 72371).
 	base.Ctxt.UseBASEntries = base.Ctxt.Headtype != objabi.Hdarwin
 
-	types.LocalPkg = types.NewPkg("", "")
-	types.LocalPkg.Prefix = "\"\""
+	base.DebugSSA = ssa.PhaseOption
+	base.ParseFlags()
+
+	types.LocalPkg = types.NewPkg(base.Ctxt.Pkgpath, "")
 
 	// We won't know localpkg's height until after import
 	// processing. In the mean time, set to MaxPkgHeight to ensure
@@ -99,9 +101,6 @@ func Main(archInit func(*ssagen.ArchInfo)) {
 
 	// pseudo-package used for methods with anonymous receivers
 	ir.Pkgs.Go = types.NewPkg("go", "")
-
-	base.DebugSSA = ssa.PhaseOption
-	base.ParseFlags()
 
 	// Record flags that affect the build result. (And don't
 	// record flags that don't, since that would cause spurious
@@ -140,7 +139,7 @@ func Main(archInit func(*ssagen.ArchInfo)) {
 
 	types.ParseLangFlag()
 
-	symABIs := ssagen.NewSymABIs(base.Ctxt.Pkgpath)
+	symABIs := ssagen.NewSymABIs()
 	if base.Flag.SymABIs != "" {
 		symABIs.ReadSymABIs(base.Flag.SymABIs)
 	}
@@ -188,8 +187,14 @@ func Main(archInit func(*ssagen.ArchInfo)) {
 
 	// Parse and typecheck input.
 	noder.LoadPackage(flag.Args())
+
+	// As a convenience to users (toolchain maintainers, in particular),
+	// when compiling a package named "main", we default the package
+	// path to "main" if the -p flag was not specified.
 	if base.Ctxt.Pkgpath == obj.UnlinkablePkg && types.LocalPkg.Name == "main" {
 		base.Ctxt.Pkgpath = "main"
+		types.LocalPkg.Path = "main"
+		types.LocalPkg.Prefix = "main"
 	}
 
 	dwarfgen.RecordPackageName()

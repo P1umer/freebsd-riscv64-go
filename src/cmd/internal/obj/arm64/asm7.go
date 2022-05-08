@@ -1222,6 +1222,16 @@ func span7(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	// so instruction sequences that use REGTMP are unsafe to
 	// preempt asynchronously.
 	obj.MarkUnsafePoints(c.ctxt, c.cursym.Func().Text, c.newprog, c.isUnsafePoint, c.isRestartable)
+
+	// Now that we know byte offsets, we can generate jump table entries.
+	for _, jt := range cursym.Func().JumpTables {
+		for i, p := range jt.Targets {
+			// The ith jumptable entry points to the p.Pc'th
+			// byte in the function symbol s.
+			// TODO: try using relative PCs.
+			jt.Sym.WriteAddr(ctxt, int64(i)*8, 8, cursym, p.Pc)
+		}
+	}
 }
 
 // isUnsafePoint returns whether p is an unsafe point.
@@ -6673,7 +6683,12 @@ func (c *ctxt7) opimm(p *obj.Prog, a obj.As) uint32 {
 func (c *ctxt7) brdist(p *obj.Prog, preshift int, flen int, shift int) int64 {
 	v := int64(0)
 	t := int64(0)
-	q := p.To.Target()
+	var q *obj.Prog
+	if p.To.Type == obj.TYPE_BRANCH {
+		q = p.To.Target()
+	} else if p.From.Type == obj.TYPE_BRANCH { // adr, adrp
+		q = p.From.Target()
+	}
 	if q == nil {
 		// TODO: don't use brdist for this case, as it isn't a branch.
 		// (Calls from omovlit, and maybe adr/adrp opcodes as well.)
@@ -7402,7 +7417,7 @@ func (c *ctxt7) opextr(p *obj.Prog, a obj.As, v int32, rn int, rm int, rt int) u
 	return o
 }
 
-/* genrate instruction encoding for ldp and stp series */
+/* generate instruction encoding for ldp and stp series */
 func (c *ctxt7) opldpstp(p *obj.Prog, o *Optab, vo int32, rbase, rl, rh, ldp uint32) uint32 {
 	wback := false
 	if o.scond == C_XPOST || o.scond == C_XPRE {

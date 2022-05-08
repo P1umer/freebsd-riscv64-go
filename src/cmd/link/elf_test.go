@@ -140,6 +140,12 @@ func TestMinusRSymsWithSameName(t *testing.T) {
 	testenv.MustHaveCGO(t)
 	t.Parallel()
 
+	// Fails on freebsd/riscv64:
+	// /tmp/go-build2185396153/b001/_pkg_.a(ldr.syso): unknown relocation type 57; compiled without -fpic?
+	if runtime.GOOS == "freebsd" && runtime.GOARCH == "riscv64" {
+		t.Skipf("Skipping on %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+
 	dir := t.TempDir()
 
 	gopath := filepath.Join(dir, "GOPATH")

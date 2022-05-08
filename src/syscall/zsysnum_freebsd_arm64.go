@@ -232,7 +232,6 @@ const (
 	SYS_GETRESUID                = 360 // { int getresuid(uid_t *ruid, uid_t *euid, uid_t *suid); }
 	SYS_GETRESGID                = 361 // { int getresgid(gid_t *rgid, gid_t *egid, gid_t *sgid); }
 	SYS_KQUEUE                   = 362 // { int kqueue(void); }
-	SYS_KEVENT                   = 363 // { int kevent(int fd, struct kevent *changelist, int nchanges, struct kevent *eventlist, int nevents, const struct timespec *timeout); }
 	SYS_EXTATTR_SET_FD           = 371 // { ssize_t extattr_set_fd(int fd, int attrnamespace, const char *attrname, void *data, size_t nbytes); }
 	SYS_EXTATTR_GET_FD           = 372 // { ssize_t extattr_get_fd(int fd, int attrnamespace, const char *attrname, void *data, size_t nbytes); }
 	SYS_EXTATTR_DELETE_FD        = 373 // { int extattr_delete_fd(int fd, int attrnamespace, const char *attrname); }
@@ -393,4 +392,5 @@ const (
 	SYS_NUMA_GETAFFINITY         = 548 // { int numa_getaffinity(cpuwhich_t which, id_t id, struct vm_domain_policy_entry *policy); }
 	SYS_NUMA_SETAFFINITY         = 549 // { int numa_setaffinity(cpuwhich_t which, id_t id, const struct vm_domain_policy_entry *policy); }
 	SYS_FDATASYNC                = 550 // { int fdatasync(int fd); }
+	SYS_KEVENT                   = 560 // { int kevent(int kq, const struct kevent *changelist, int nchanges, struct kevent *eventlist, int nevents, const struct timespec *timeout); }
 )

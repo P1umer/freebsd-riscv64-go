@@ -496,6 +496,16 @@ func walkAddString(n *ir.AddStringExpr, init *ir.Nodes) ir.Node {
 	return r1
 }
 
+type hookInfo struct {
+	paramType   types.Kind
+	argsNum     int
+	runtimeFunc string
+}
+
+var hooks = map[string]hookInfo{
+	"strings.EqualFold": {paramType: types.TSTRING, argsNum: 2, runtimeFunc: "libfuzzerHookEqualFold"},
+}
+
 // walkCall walks an OCALLFUNC or OCALLINTER node.
 func walkCall(n *ir.CallExpr, init *ir.Nodes) ir.Node {
 	if n.Op() == ir.OCALLMETH {
@@ -591,6 +601,20 @@ func walkCall1(n *ir.CallExpr, init *ir.Nodes) {
 	}
 
 	n.Args = args
+	funSym := n.X.Sym()
+	if base.Debug.Libfuzzer != 0 && funSym != nil {
+		if hook, found := hooks[funSym.Pkg.Path+"."+funSym.Name]; found {
+			if len(args) != hook.argsNum {
+				panic(fmt.Sprintf("%s.%s expects %d arguments, but received %d", funSym.Pkg.Path, funSym.Name, hook.argsNum, len(args)))
+			}
+			var hookArgs []ir.Node
+			for _, arg := range args {
+				hookArgs = append(hookArgs, tracecmpArg(arg, types.Types[hook.paramType], init))
+			}
+			hookArgs = append(hookArgs, fakePC(n))
+			init.Append(mkcall(hook.runtimeFunc, nil, init, hookArgs...))
+		}
+	}
 }
 
 // walkDivMod walks an ODIV or OMOD node.
@@ -666,7 +690,7 @@ func walkDotType(n *ir.TypeAssertExpr, init *ir.Nodes) ir.Node {
 	n.X = walkExpr(n.X, init)
 	// Set up interface type addresses for back end.
 	if !n.Type().IsInterface() && !n.X.Type().IsEmptyInterface() {
-		n.Itab = reflectdata.ITabAddr(n.Type(), n.X.Type())
+		n.ITab = reflectdata.ITabAddr(n.Type(), n.X.Type())
 	}
 	return n
 }
@@ -674,7 +698,8 @@ func walkDotType(n *ir.TypeAssertExpr, init *ir.Nodes) ir.Node {
 // walkDynamicdotType walks an ODYNAMICDOTTYPE or ODYNAMICDOTTYPE2 node.
 func walkDynamicDotType(n *ir.DynamicTypeAssertExpr, init *ir.Nodes) ir.Node {
 	n.X = walkExpr(n.X, init)
-	n.T = walkExpr(n.T, init)
+	n.RType = walkExpr(n.RType, init)
+	n.ITab = walkExpr(n.ITab, init)
 	return n
 }
 

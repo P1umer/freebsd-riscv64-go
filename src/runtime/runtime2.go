@@ -686,6 +686,9 @@ type p struct {
 	gcAssistTime         int64 // Nanoseconds in assistAlloc
 	gcFractionalMarkTime int64 // Nanoseconds in fractional mark worker (atomic)
 
+	// limiterEvent tracks events for the GC CPU limiter.
+	limiterEvent limiterEvent
+
 	// gcMarkWorkerMode is the mode for the next mark worker to run in.
 	// That is, this is used to communicate with the worker goroutine
 	// selected for immediate execution by
@@ -732,11 +735,19 @@ type p struct {
 	// Race context used while executing timer functions.
 	timerRaceCtx uintptr
 
-	// scannableStackSizeDelta accumulates the amount of stack space held by
+	// maxStackScanDelta accumulates the amount of stack space held by
 	// live goroutines (i.e. those eligible for stack scanning).
-	// Flushed to gcController.scannableStackSize once scannableStackSizeSlack
-	// or -scannableStackSizeSlack is reached.
-	scannableStackSizeDelta int64
+	// Flushed to gcController.maxStackScan once maxStackScanSlack
+	// or -maxStackScanSlack is reached.
+	maxStackScanDelta int64
+
+	// gc-time statistics about current goroutines
+	// Note that this differs from maxStackScan in that this
+	// accumulates the actual stack observed to be used at GC time (hi - sp),
+	// not an instantaneous measure of the total stack size that might need
+	// to be scanned (hi - lo).
+	scannedStackSize uint64 // stack size of goroutines scanned by this P
+	scannedStacks    uint64 // number of goroutines scanned by this P
 
 	// preempt is set to indicate that this P should be enter the
 	// scheduler ASAP (regardless of what G is running on it).

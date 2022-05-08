@@ -476,7 +476,7 @@ TEXT runtime·kevent(SB),NOSPLIT,$0
 	MOVQ	ev+24(FP), R10
 	MOVL	nev+32(FP), R8
 	MOVQ	ts+40(FP), R9
-	MOVL	$363, AX
+	MOVL	$560, AX
 	SYSCALL
 	JCC	2(PC)
 	NEGQ	AX

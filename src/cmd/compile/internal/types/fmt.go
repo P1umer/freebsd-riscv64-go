@@ -72,7 +72,6 @@ const (
 	fmtDebug
 	fmtTypeID
 	fmtTypeIDName
-	fmtTypeIDHash
 )
 
 // Sym
@@ -144,22 +143,6 @@ func symfmt(b *bytes.Buffer, s *Sym, verb rune, mode fmtMode) {
 	if q := pkgqual(s.Pkg, verb, mode); q != "" {
 		b.WriteString(q)
 		b.WriteByte('.')
-		switch mode {
-		case fmtTypeIDName:
-			// If name is a generic instantiation, it might have local package placeholders
-			// in it. Replace those placeholders with the package name. See issue 49547.
-			name = strings.Replace(name, LocalPkg.Prefix, q, -1)
-		case fmtTypeIDHash:
-			// If name is a generic instantiation, don't hash the instantiating types.
-			// This isn't great, but it is safe. If we hash the instantiating types, then
-			// we need to make sure they have just the package name. At this point, they
-			// either have "", or the whole package path, and it is hard to reconcile
-			// the two without depending on -p (which we might do someday).
-			// See issue 51250.
-			if i := strings.Index(name, "["); i >= 0 {
-				name = name[:i]
-			}
-		}
 	}
 	b.WriteString(name)
 }
@@ -187,7 +170,7 @@ func pkgqual(pkg *Pkg, verb rune, mode fmtMode) string {
 		case fmtDebug:
 			return pkg.Name
 
-		case fmtTypeIDName, fmtTypeIDHash:
+		case fmtTypeIDName:
 			// dcommontype, typehash
 			return pkg.Name
 
@@ -261,24 +244,13 @@ func (t *Type) String() string {
 	return tconv(t, 0, fmtGo)
 }
 
-// LinkString returns an unexpanded string description of t, suitable
-// for use in link symbols. "Unexpanded" here means that the
-// description uses `"".` to qualify identifiers from the current
-// package, and "expansion" refers to the renaming step performed by
-// the linker to replace these qualifiers with proper `path/to/pkg.`
-// qualifiers.
+// LinkString returns a string description of t, suitable for use in
+// link symbols.
 //
-// After expansion, the description corresponds to type identity. That
-// is, for any pair of types t1 and t2, Identical(t1, t2) and
-// expand(t1.LinkString()) == expand(t2.LinkString()) report the same
-// value.
-//
-// Within a single compilation unit, LinkString always returns the
-// same unexpanded description for identical types. Thus it's safe to
-// use as a map key to implement a type-identity-keyed map. However,
-// make sure all LinkString calls used for this purpose happen within
-// the same compile process; the string keys are not stable across
-// multiple processes.
+// The description corresponds to type identity. That is, for any pair
+// of types t1 and t2, Identical(t1, t2) == (t1.LinkString() ==
+// t2.LinkString()) is true. Thus it's safe to use as a map key to
+// implement a type-identity-keyed map.
 func (t *Type) LinkString() string {
 	return tconv(t, 0, fmtTypeID)
 }
@@ -344,7 +316,7 @@ func tconv2(b *bytes.Buffer, t *Type, verb rune, mode fmtMode, visited map[*Type
 	if t == AnyType || t == ByteType || t == RuneType {
 		// in %-T mode collapse predeclared aliases with their originals.
 		switch mode {
-		case fmtTypeIDName, fmtTypeIDHash, fmtTypeID:
+		case fmtTypeIDName, fmtTypeID:
 			t = Types[t.Kind()]
 		default:
 			sconv2(b, t.Sym(), 'S', mode)
@@ -435,7 +407,7 @@ func tconv2(b *bytes.Buffer, t *Type, verb rune, mode fmtMode, visited map[*Type
 	case TPTR:
 		b.WriteByte('*')
 		switch mode {
-		case fmtTypeID, fmtTypeIDName, fmtTypeIDHash:
+		case fmtTypeID, fmtTypeIDName:
 			if verb == 'S' {
 				tconv2(b, t.Elem(), 'S', mode, visited)
 				return
@@ -497,7 +469,7 @@ func tconv2(b *bytes.Buffer, t *Type, verb rune, mode fmtMode, visited map[*Type
 			case IsExported(f.Sym.Name):
 				sconv2(b, f.Sym, 'S', mode)
 			default:
-				if mode != fmtTypeIDName && mode != fmtTypeIDHash {
+				if mode != fmtTypeIDName {
 					mode = fmtTypeID
 				}
 				sconv2(b, f.Sym, 'v', mode)
@@ -567,7 +539,7 @@ func tconv2(b *bytes.Buffer, t *Type, verb rune, mode fmtMode, visited map[*Type
 			b.WriteByte(byte(open))
 			fieldVerb := 'v'
 			switch mode {
-			case fmtTypeID, fmtTypeIDName, fmtTypeIDHash, fmtGo:
+			case fmtTypeID, fmtTypeIDName, fmtGo:
 				// no argument names on function signature, and no "noescape"/"nosplit" tags
 				fieldVerb = 'S'
 			}
@@ -701,7 +673,7 @@ func fldconv(b *bytes.Buffer, f *Field, verb rune, mode fmtMode, visited map[*Ty
 				if name == ".F" {
 					name = "F" // Hack for toolstash -cmp.
 				}
-				if !IsExported(name) && mode != fmtTypeIDName && mode != fmtTypeIDHash {
+				if !IsExported(name) && mode != fmtTypeIDName {
 					name = sconv(s, 0, mode) // qualify non-exported names (used on structs, not on funarg)
 				}
 			} else {
@@ -769,7 +741,7 @@ func FmtConst(v constant.Value, sharp bool) string {
 
 // TypeHash computes a hash value for type t to use in type switch statements.
 func TypeHash(t *Type) uint32 {
-	p := tconv(t, 0, fmtTypeIDHash)
+	p := t.LinkString()
 
 	// Using SHA256 is overkill, but reduces accidental collisions.
 	h := notsha256.Sum256([]byte(p))

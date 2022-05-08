@@ -218,10 +218,10 @@ func TestIntendedInlining(t *testing.T) {
 		},
 	}
 
-	if runtime.GOARCH != "386" && runtime.GOARCH != "mips64" && runtime.GOARCH != "mips64le" && runtime.GOARCH != "riscv64" {
+	if runtime.GOARCH != "386" && runtime.GOARCH != "loong64" && runtime.GOARCH != "mips64" && runtime.GOARCH != "mips64le" && runtime.GOARCH != "riscv64" {
 		// nextFreeFast calls sys.Ctz64, which on 386 is implemented in asm and is not inlinable.
 		// We currently don't have midstack inlining so nextFreeFast is also not inlinable on 386.
-		// On mips64x and riscv64, Ctz64 is not intrinsified and causes nextFreeFast too expensive
+		// On loong64, mips64x and riscv64, Ctz64 is not intrinsified and causes nextFreeFast too expensive
 		// to inline (Issue 22239).
 		want["runtime"] = append(want["runtime"], "nextFreeFast")
 	}
@@ -275,7 +275,7 @@ func TestIntendedInlining(t *testing.T) {
 		}
 	}
 
-	args := append([]string{"build", "-a", "-gcflags=all=-m -m", "-tags=math_big_pure_go"}, pkgs...)
+	args := append([]string{"build", "-gcflags=-m -m", "-tags=math_big_pure_go"}, pkgs...)
 	cmd := testenv.CleanCmdEnv(exec.Command(testenv.GoToolPath(t), args...))
 	pr, pw := io.Pipe()
 	cmd.Stdout = pw

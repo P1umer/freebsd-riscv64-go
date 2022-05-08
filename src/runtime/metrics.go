@@ -65,6 +65,12 @@ func initMetrics() {
 
 	timeHistBuckets = timeHistogramMetricsBuckets()
 	metrics = map[string]metricData{
+		"/cgo/go-to-c-calls:calls": {
+			compute: func(_ *statAggregate, out *metricValue) {
+				out.kind = metricKindUint64
+				out.scalar = uint64(NumCgoCall())
+			},
+		},
 		"/gc/cycles/automatic:gc-cycles": {
 			deps: makeStatDepSet(sysStatsDep),
 			compute: func(in *statAggregate, out *metricValue) {
@@ -159,6 +165,12 @@ func initMetrics() {
 				out.scalar = uint64(in.heapStats.tinyAllocCount)
 			},
 		},
+		"/gc/limiter/last-enabled:gc-cycle": {
+			compute: func(_ *statAggregate, out *metricValue) {
+				out.kind = metricKindUint64
+				out.scalar = uint64(gcCPULimiter.lastEnabledCycle.Load())
+			},
+		},
 		"/gc/pauses:seconds": {
 			compute: func(_ *statAggregate, out *metricValue) {
 				hist := out.float64HistOrInit(timeHistBuckets)
@@ -169,6 +181,12 @@ func initMetrics() {
 				for i := range memstats.gcPauseDist.counts {
 					hist.counts[i+1] = atomic.Load64(&memstats.gcPauseDist.counts[i])
 				}
+			},
+		},
+		"/gc/stack/starting-size:bytes": {
+			compute: func(in *statAggregate, out *metricValue) {
+				out.kind = metricKindUint64
+				out.scalar = uint64(startingStackSize)
 			},
 		},
 		"/memory/classes/heap/free:bytes": {
@@ -272,6 +290,12 @@ func initMetrics() {
 					in.sysStats.stacksSys + in.sysStats.mSpanSys +
 					in.sysStats.mCacheSys + in.sysStats.buckHashSys +
 					in.sysStats.gcMiscSys + in.sysStats.otherSys
+			},
+		},
+		"/sched/gomaxprocs:threads": {
+			compute: func(_ *statAggregate, out *metricValue) {
+				out.kind = metricKindUint64
+				out.scalar = uint64(gomaxprocs)
 			},
 		},
 		"/sched/goroutines:goroutines": {

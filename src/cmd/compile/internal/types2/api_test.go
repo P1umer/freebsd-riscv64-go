@@ -38,7 +38,7 @@ func pkgFor(path, source string, info *Info) (*Package, error) {
 	return conf.Check(f.PkgName.Value, []*syntax.File{f}, info)
 }
 
-func mustTypecheck(t *testing.T, path, source string, info *Info) string {
+func mustTypecheck(t testing.TB, path, source string, info *Info) string {
 	pkg, err := pkgFor(path, source, info)
 	if err != nil {
 		name := path
@@ -1618,19 +1618,41 @@ func TestLookupFieldOrMethod(t *testing.T) {
 		{"var x T; type T struct{ f int }", true, []int{0}, false},
 		{"var x T; type T struct{ a, b, f, c int }", true, []int{2}, false},
 
+		// field lookups on a generic type
+		{"var x T[int]; type T[P any] struct{}", false, nil, false},
+		{"var x T[int]; type T[P any] struct{ f P }", true, []int{0}, false},
+		{"var x T[int]; type T[P any] struct{ a, b, f, c P }", true, []int{2}, false},
+
 		// method lookups
 		{"var a T; type T struct{}; func (T) f() {}", true, []int{0}, false},
 		{"var a *T; type T struct{}; func (T) f() {}", true, []int{0}, true},
 		{"var a T; type T struct{}; func (*T) f() {}", true, []int{0}, false},
 		{"var a *T; type T struct{}; func (*T) f() {}", true, []int{0}, true}, // TODO(gri) should this report indirect = false?
 
+		// method lookups on a generic type
+		{"var a T[int]; type T[P any] struct{}; func (T[P]) f() {}", true, []int{0}, false},
+		{"var a *T[int]; type T[P any] struct{}; func (T[P]) f() {}", true, []int{0}, true},
+		{"var a T[int]; type T[P any] struct{}; func (*T[P]) f() {}", true, []int{0}, false},
+		{"var a *T[int]; type T[P any] struct{}; func (*T[P]) f() {}", true, []int{0}, true}, // TODO(gri) should this report indirect = false?
+
 		// collisions
 		{"type ( E1 struct{ f int }; E2 struct{ f int }; x struct{ E1; *E2 })", false, []int{1, 0}, false},
 		{"type ( E1 struct{ f int }; E2 struct{}; x struct{ E1; *E2 }); func (E2) f() {}", false, []int{1, 0}, false},
 
+		// collisions on a generic type
+		{"type ( E1[P any] struct{ f P }; E2[P any] struct{ f P }; x struct{ E1[int]; *E2[int] })", false, []int{1, 0}, false},
+		{"type ( E1[P any] struct{ f P }; E2[P any] struct{}; x struct{ E1[int]; *E2[int] }); func (E2[P]) f() {}", false, []int{1, 0}, false},
+
 		// outside methodset
 		// (*T).f method exists, but value of type T is not addressable
 		{"var x T; type T struct{}; func (*T) f() {}", false, nil, true},
+
+		// outside method set of a generic type
+		{"var x T[int]; type T[P any] struct{}; func (*T[P]) f() {}", false, nil, true},
+
+		// recursive generic types; see golang/go#52715
+		{"var a T[int]; type ( T[P any] struct { *N[P] }; N[P any] struct { *T[P] } ); func (N[P]) f() {}", true, []int{0, 0}, true},
+		{"var a T[int]; type ( T[P any] struct { *N[P] }; N[P any] struct { *T[P] } ); func (T[P]) f() {}", true, []int{0}, false},
 	}
 
 	for _, test := range tests {
@@ -1663,6 +1685,37 @@ func TestLookupFieldOrMethod(t *testing.T) {
 			t.Errorf("%s: got indirect = %v; want %v", test.src, indirect, test.indirect)
 		}
 	}
+}
+
+// Test for golang/go#52715
+func TestLookupFieldOrMethod_RecursiveGeneric(t *testing.T) {
+	const src = `
+package pkg
+
+type Tree[T any] struct {
+	*Node[T]
+}
+
+func (*Tree[R]) N(r R) R { return r }
+
+type Node[T any] struct {
+	*Tree[T]
+}
+
+type Instance = *Tree[int]
+`
+
+	f, err := parseSrc("foo.go", src)
+	if err != nil {
+		panic(err)
+	}
+	pkg := NewPackage("pkg", f.PkgName.Value)
+	if err := NewChecker(nil, pkg, nil).Files([]*syntax.File{f}); err != nil {
+		panic(err)
+	}
+
+	T := pkg.Scope().Lookup("Instance").Type()
+	_, _, _ = LookupFieldOrMethod(T, false, pkg, "M") // verify that LookupFieldOrMethod terminates
 }
 
 func sameSlice(a, b []int) bool {
@@ -2243,7 +2296,7 @@ func TestInstantiateErrors(t *testing.T) {
 		}
 
 		if argErr.Index != test.wantAt {
-			t.Errorf("Instantate(%v, %v): error at index %d, want index %d", T, test.targs, argErr.Index, test.wantAt)
+			t.Errorf("Instantiate(%v, %v): error at index %d, want index %d", T, test.targs, argErr.Index, test.wantAt)
 		}
 	}
 }
@@ -2296,15 +2349,19 @@ type T[P any] struct {
 	field P
 }
 
-func (recv *T[Q]) concreteMethod() {}
+func (recv *T[Q]) concreteMethod(mParam Q) (mResult Q) { return }
 
-type FT[P any] func(ftp P) (ftrp P)
+type FT[P any] func(ftParam P) (ftResult P)
 
-func F[P any](fp P) (frp P){ return }
+func F[P any](fParam P) (fResult P){ return }
 
 type I[P any] interface {
 	interfaceMethod(P)
 }
+
+type R[P any] T[P]
+
+func (R[P]) m() {} // having a method triggers expansion of R
 
 var (
 	t T[int]
@@ -2312,6 +2369,11 @@ var (
 	f = F[int]
 	i I[int]
 )
+
+func fn() {
+	var r R[int]
+	_ = r
+}
 `
 	info := &Info{
 		Defs: make(map[*syntax.Name]Object),
@@ -2327,18 +2389,32 @@ var (
 	}
 
 	lookup := func(name string) Type { return pkg.Scope().Lookup(name).Type() }
+	fnScope := pkg.Scope().Lookup("fn").(*Func).Scope()
+
 	tests := []struct {
-		ident string
-		obj   Object
+		name string
+		obj  Object
 	}{
+		// Struct fields
 		{"field", lookup("t").Underlying().(*Struct).Field(0)},
+		{"field", fnScope.Lookup("r").Type().Underlying().(*Struct).Field(0)},
+
+		// Methods and method fields
 		{"concreteMethod", lookup("t").(*Named).Method(0)},
 		{"recv", lookup("t").(*Named).Method(0).Type().(*Signature).Recv()},
-		{"ftp", lookup("ft").Underlying().(*Signature).Params().At(0)},
-		{"ftrp", lookup("ft").Underlying().(*Signature).Results().At(0)},
-		{"fp", lookup("f").(*Signature).Params().At(0)},
-		{"frp", lookup("f").(*Signature).Results().At(0)},
+		{"mParam", lookup("t").(*Named).Method(0).Type().(*Signature).Params().At(0)},
+		{"mResult", lookup("t").(*Named).Method(0).Type().(*Signature).Results().At(0)},
+
+		// Interface methods
 		{"interfaceMethod", lookup("i").Underlying().(*Interface).Method(0)},
+
+		// Function type fields
+		{"ftParam", lookup("ft").Underlying().(*Signature).Params().At(0)},
+		{"ftResult", lookup("ft").Underlying().(*Signature).Results().At(0)},
+
+		// Function fields
+		{"fParam", lookup("f").(*Signature).Params().At(0)},
+		{"fResult", lookup("f").(*Signature).Results().At(0)},
 	}
 
 	// Collect all identifiers by name.
@@ -2352,14 +2428,17 @@ var (
 
 	for _, test := range tests {
 		test := test
-		t.Run(test.ident, func(t *testing.T) {
-			if got := len(idents[test.ident]); got != 1 {
-				t.Fatalf("found %d identifiers named %s, want 1", got, test.ident)
+		t.Run(test.name, func(t *testing.T) {
+			if got := len(idents[test.name]); got != 1 {
+				t.Fatalf("found %d identifiers named %s, want 1", got, test.name)
 			}
-			ident := idents[test.ident][0]
+			ident := idents[test.name][0]
 			def := info.Defs[ident]
 			if def == test.obj {
-				t.Fatalf("info.Defs[%s] contains the test object", test.ident)
+				t.Fatalf("info.Defs[%s] contains the test object", test.name)
+			}
+			if orig := originObject(test.obj); def != orig {
+				t.Errorf("info.Defs[%s] does not match obj.Origin()", test.name)
 			}
 			if def.Pkg() != test.obj.Pkg() {
 				t.Errorf("Pkg() = %v, want %v", def.Pkg(), test.obj.Pkg())
@@ -2382,6 +2461,16 @@ var (
 			// String and Type are expected to differ.
 		})
 	}
+}
+
+func originObject(obj Object) Object {
+	switch obj := obj.(type) {
+	case *Var:
+		return obj.Origin()
+	case *Func:
+		return obj.Origin()
+	}
+	return obj
 }
 
 func TestImplements(t *testing.T) {

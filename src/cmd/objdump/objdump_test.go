@@ -102,11 +102,13 @@ var ppcNeed = []string{
 var ppcGnuNeed = []string{
 	"mflr",
 	"lbz",
-	"cmpw",
+	"beq",
 }
 
 func mustHaveDisasm(t *testing.T) {
 	switch runtime.GOARCH {
+	case "loong64":
+		t.Skipf("skipping on %s", runtime.GOARCH)
 	case "mips", "mipsle", "mips64", "mips64le":
 		t.Skipf("skipping on %s, issue 12559", runtime.GOARCH)
 	case "riscv64":
@@ -354,7 +356,7 @@ func TestGoObjOtherVersion(t *testing.T) {
 	cmd := exec.Command(exe, obj)
 	out, err := cmd.CombinedOutput()
 	if err == nil {
-		t.Fatalf("objdump go116.o succeeded unexpectly")
+		t.Fatalf("objdump go116.o succeeded unexpectedly")
 	}
 	if !strings.Contains(string(out), "go object of a different version") {
 		t.Errorf("unexpected error message:\n%s", out)

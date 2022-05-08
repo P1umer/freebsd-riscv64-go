@@ -135,7 +135,7 @@ func main() {
 			}
 		case strings.Contains(out, "loongarch64"):
 			gohostarch = "loong64"
-		case strings.Contains(out, "riscv64"):
+		case strings.Contains(out, "riscv64") , strings.Contains(out, "riscv"):
 			gohostarch = "riscv64"
 		case strings.Contains(out, "s390x"):
 			gohostarch = "s390x"

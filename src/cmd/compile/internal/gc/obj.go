@@ -20,6 +20,7 @@ import (
 	"cmd/internal/objabi"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // These modes say which kind of object file to generate.
@@ -279,6 +280,17 @@ func addGCLocals() {
 
 func ggloblnod(nam *ir.Name) {
 	s := nam.Linksym()
+
+	// main_inittask and runtime_inittask in package runtime (and in
+	// test/initempty.go) aren't real variable declarations, but
+	// linknamed variables pointing to the compiler's generated
+	// .inittask symbol. The real symbol was already written out in
+	// pkginit.Task, so we need to avoid writing them out a second time
+	// here, otherwise base.Ctxt.Globl will fail.
+	if strings.HasSuffix(s.Name, "..inittask") && s.OnList() {
+		return
+	}
+
 	s.Gotype = reflectdata.TypeLinksym(nam.Type())
 	flags := 0
 	if nam.Readonly() {
@@ -301,8 +313,8 @@ func ggloblnod(nam *ir.Name) {
 	} else {
 		base.Ctxt.Globl(s, size, flags)
 	}
-	if nam.LibfuzzerExtraCounter() {
-		s.Type = objabi.SLIBFUZZER_EXTRA_COUNTER
+	if nam.Libfuzzer8BitCounter() {
+		s.Type = objabi.SLIBFUZZER_8BIT_COUNTER
 	}
 	if nam.Sym().Linkname != "" {
 		// Make sure linkname'd symbol is non-package. When a symbol is

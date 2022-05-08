@@ -64,6 +64,10 @@
 // t.UnmarshalJSON, and t.UnmarshalText always create times with
 // no monotonic clock reading.
 //
+// The monotonic clock reading exists only in Time values. It is not
+// a part of Duration values or the Unix times returned by t.Unix and
+// friends.
+//
 // Note that the Go == operator compares not just the time instant but
 // also the Location and the monotonic clock reading. See the
 // documentation for the Time type for a discussion of equality
@@ -1134,6 +1138,24 @@ func (t Time) Location() *Location {
 // name of the zone (such as "CET") and its offset in seconds east of UTC.
 func (t Time) Zone() (name string, offset int) {
 	name, offset, _, _, _ = t.loc.lookup(t.unixSec())
+	return
+}
+
+// ZoneBounds returns the bounds of the time zone in effect at time t.
+// The zone begins at start and the next zone begins at end.
+// If the zone begins at the beginning of time, start will be returned as a zero Time.
+// If the zone goes on forever, end will be returned as a zero Time.
+// The Location of the returned times will be the same as t.
+func (t Time) ZoneBounds() (start, end Time) {
+	_, _, startSec, endSec, _ := t.loc.lookup(t.unixSec())
+	if startSec != alpha {
+		start = unixTime(startSec, 0)
+		start.setLoc(t.loc)
+	}
+	if endSec != omega {
+		end = unixTime(endSec, 0)
+		end.setLoc(t.loc)
+	}
 	return
 }
 

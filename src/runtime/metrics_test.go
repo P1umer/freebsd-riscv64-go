@@ -46,6 +46,8 @@ func TestReadMetrics(t *testing.T) {
 	var mallocs, frees uint64
 	for i := range samples {
 		switch name := samples[i].Name; name {
+		case "/cgo/go-to-c-calls:calls":
+			checkUint64(t, name, samples[i].Value.Uint64(), uint64(runtime.NumCgoCall()))
 		case "/memory/classes/heap/free:bytes":
 			checkUint64(t, name, samples[i].Value.Uint64(), mstats.HeapIdle-mstats.HeapReleased)
 		case "/memory/classes/heap/released:bytes":
@@ -222,6 +224,10 @@ func TestReadMetricsConsistency(t *testing.T) {
 			gc.pauses = 0
 			for i := range h.Counts {
 				gc.pauses += h.Counts[i]
+			}
+		case "/sched/gomaxprocs:threads":
+			if got, want := samples[i].Value.Uint64(), uint64(runtime.GOMAXPROCS(-1)); got != want {
+				t.Errorf("gomaxprocs doesn't match runtime.GOMAXPROCS: got %d, want %d", got, want)
 			}
 		case "/sched/goroutines:goroutines":
 			if samples[i].Value.Uint64() < 1 {

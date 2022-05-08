@@ -106,38 +106,54 @@ func panicCheck2(err string) {
 // a space-minimal register calling convention.
 
 // failures in the comparisons for s[x], 0 <= x < y (y == len(s))
+//
+//go:yeswritebarrierrec
 func goPanicIndex(x int, y int) {
 	panicCheck1(getcallerpc(), "index out of range")
 	panic(boundsError{x: int64(x), signed: true, y: y, code: boundsIndex})
 }
+
+//go:yeswritebarrierrec
 func goPanicIndexU(x uint, y int) {
 	panicCheck1(getcallerpc(), "index out of range")
 	panic(boundsError{x: int64(x), signed: false, y: y, code: boundsIndex})
 }
 
 // failures in the comparisons for s[:x], 0 <= x <= y (y == len(s) or cap(s))
+//
+//go:yeswritebarrierrec
 func goPanicSliceAlen(x int, y int) {
 	panicCheck1(getcallerpc(), "slice bounds out of range")
 	panic(boundsError{x: int64(x), signed: true, y: y, code: boundsSliceAlen})
 }
+
+//go:yeswritebarrierrec
 func goPanicSliceAlenU(x uint, y int) {
 	panicCheck1(getcallerpc(), "slice bounds out of range")
 	panic(boundsError{x: int64(x), signed: false, y: y, code: boundsSliceAlen})
 }
+
+//go:yeswritebarrierrec
 func goPanicSliceAcap(x int, y int) {
 	panicCheck1(getcallerpc(), "slice bounds out of range")
 	panic(boundsError{x: int64(x), signed: true, y: y, code: boundsSliceAcap})
 }
+
+//go:yeswritebarrierrec
 func goPanicSliceAcapU(x uint, y int) {
 	panicCheck1(getcallerpc(), "slice bounds out of range")
 	panic(boundsError{x: int64(x), signed: false, y: y, code: boundsSliceAcap})
 }
 
 // failures in the comparisons for s[x:y], 0 <= x <= y
+//
+//go:yeswritebarrierrec
 func goPanicSliceB(x int, y int) {
 	panicCheck1(getcallerpc(), "slice bounds out of range")
 	panic(boundsError{x: int64(x), signed: true, y: y, code: boundsSliceB})
 }
+
+//go:yeswritebarrierrec
 func goPanicSliceBU(x uint, y int) {
 	panicCheck1(getcallerpc(), "slice bounds out of range")
 	panic(boundsError{x: int64(x), signed: false, y: y, code: boundsSliceB})
@@ -209,6 +225,7 @@ func panicSliceConvert(x int, y int)
 
 var shiftError = error(errorString("negative shift amount"))
 
+//go:yeswritebarrierrec
 func panicshift() {
 	panicCheck1(getcallerpc(), "negative shift amount")
 	panic(shiftError)
@@ -216,6 +233,7 @@ func panicshift() {
 
 var divideError = error(errorString("integer divide by zero"))
 
+//go:yeswritebarrierrec
 func panicdivide() {
 	panicCheck2("integer divide by zero")
 	panic(divideError)
@@ -1017,6 +1035,7 @@ func sync_fatal(s string) {
 //
 // throw should be used for runtime-internal fatal errors where Go itself,
 // rather than user code, may be at fault for the failure.
+//
 //go:nosplit
 func throw(s string) {
 	// Everything throw does should be recursively nosplit so it
@@ -1035,6 +1054,7 @@ func throw(s string) {
 //
 // fatal does not include runtime frames, system goroutines, or frame metadata
 // (fp, sp, pc) in the stack trace unless GOTRACEBACK=system or higher.
+//
 //go:nosplit
 func fatal(s string) {
 	// Everything fatal does should be recursively nosplit so it

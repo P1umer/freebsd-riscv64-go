@@ -576,8 +576,23 @@ func (p *Package) loadDWARF(f *File, conv *typeConv, names []*Name) {
 		switch e.Tag {
 		case dwarf.TagVariable:
 			name, _ := e.Val(dwarf.AttrName).(string)
+			// As of https://reviews.llvm.org/D123534, clang
+			// now emits DW_TAG_variable DIEs that have
+			// no name (so as to be able to describe the
+			// type and source locations of constant strings
+			// like the second arg in the call below:
+			//
+			//     myfunction(42, "foo")
+			//
+			// If a var has no name we won't see attempts to
+			// refer to it via "C.<name>", so skip these vars
+			//
+			// See issue 53000 for more context.
+			if name == "" {
+				break
+			}
 			typOff, _ := e.Val(dwarf.AttrType).(dwarf.Offset)
-			if name == "" || typOff == 0 {
+			if typOff == 0 {
 				if e.Val(dwarf.AttrSpecification) != nil {
 					// Since we are reading all the DWARF,
 					// assume we will see the variable elsewhere.
@@ -811,6 +826,7 @@ func (p *Package) rewriteCall(f *File, call *Call) (string, bool) {
 
 	params := name.FuncType.Params
 	args := call.Call.Args
+	end := call.Call.End()
 
 	// Avoid a crash if the number of arguments doesn't match
 	// the number of parameters.
@@ -958,7 +974,7 @@ func (p *Package) rewriteCall(f *File, call *Call) (string, bool) {
 	if nu {
 		needsUnsafe = true
 	}
-	sb.WriteString(gofmtLine(m))
+	sb.WriteString(gofmtPos(m, end))
 
 	sb.WriteString("(")
 	for i := range params {
@@ -2226,6 +2242,8 @@ var dwarfToName = map[string]string{
 	"long long unsigned int": "ulonglong",
 	"signed char":            "schar",
 	"unsigned char":          "uchar",
+	"unsigned long":          "ulong",     // Used by Clang 14; issue 53013.
+	"unsigned long long":     "ulonglong", // Used by Clang 14; issue 53013.
 }
 
 const signedDelta = 64

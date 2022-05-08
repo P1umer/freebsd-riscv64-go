@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"cmd/internal/sys"
 	"debug/macho"
+	"internal/buildcfg"
 	"internal/testenv"
 	"io/ioutil"
 	"os"
@@ -174,7 +175,9 @@ func TestIssue33979(t *testing.T) {
 
 	// Skip test on platforms that do not support cgo internal linking.
 	switch runtime.GOARCH {
-	case "mips", "mipsle", "mips64", "mips64le":
+	case "loong64":
+		t.Skipf("Skipping on %s/%s", runtime.GOOS, runtime.GOARCH)
+	case "mips", "mipsle", "mips64", "mips64le", "riscv64":
 		t.Skipf("Skipping on %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	if runtime.GOOS == "aix" ||
@@ -235,9 +238,9 @@ void foo() {
 	cflags := strings.Fields(runGo("env", "GOGCCFLAGS"))
 
 	// Compile, assemble and pack the Go and C code.
-	runGo("tool", "asm", "-gensymabis", "-o", "symabis", "x.s")
+	runGo("tool", "asm", "-p=main", "-gensymabis", "-o", "symabis", "x.s")
 	runGo("tool", "compile", "-symabis", "symabis", "-p=main", "-o", "x1.o", "main.go")
-	runGo("tool", "asm", "-o", "x2.o", "x.s")
+	runGo("tool", "asm", "-p=main", "-o", "x2.o", "x.s")
 	run(cc, append(cflags, "-c", "-o", "x3.o", "x.c")...)
 	runGo("tool", "pack", "c", "x.a", "x1.o", "x2.o", "x3.o")
 
@@ -1076,6 +1079,10 @@ func TestUnlinkableObj(t *testing.T) {
 	// Test that the linker emits an error with unlinkable object.
 	testenv.MustHaveGoBuild(t)
 	t.Parallel()
+
+	if buildcfg.Experiment.Unified {
+		t.Skip("TODO(mdempsky): Fix ICE when importing unlinkable objects for GOEXPERIMENT=unified")
+	}
 
 	tmpdir := t.TempDir()
 

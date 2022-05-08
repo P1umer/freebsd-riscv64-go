@@ -545,7 +545,11 @@ func gcAssistAlloc1(gp *g, scanWork int64) {
 	// Track time spent in this assist. Since we're on the
 	// system stack, this is non-preemptible, so we can
 	// just measure start and end time.
+	//
+	// Limiter event tracking might be disabled if we end up here
+	// while on a mark worker.
 	startTime := nanotime()
+	trackLimiterEvent := gp.m.p.ptr().limiterEvent.start(limiterEventMarkAssist, startTime)
 
 	decnwait := atomic.Xadd(&work.nwait, -1)
 	if decnwait == work.nproc {
@@ -593,10 +597,13 @@ func gcAssistAlloc1(gp *g, scanWork int64) {
 	duration := now - startTime
 	_p_ := gp.m.p.ptr()
 	_p_.gcAssistTime += duration
+	if trackLimiterEvent {
+		_p_.limiterEvent.stop(limiterEventMarkAssist, now)
+	}
 	if _p_.gcAssistTime > gcAssistTimeSlack {
-		assistTime := gcController.assistTime.Add(_p_.gcAssistTime)
+		gcController.assistTime.Add(_p_.gcAssistTime)
+		gcCPULimiter.update(now)
 		_p_.gcAssistTime = 0
-		gcCPULimiter.update(assistTime+mheap_.pages.scav.assistTime.Load(), now)
 	}
 }
 
@@ -746,14 +753,22 @@ func scanstack(gp *g, gcw *gcWork) int64 {
 		throw("can't scan our own stack")
 	}
 
-	// stackSize is the amount of work we'll be reporting.
+	// scannedSize is the amount of work we'll be reporting.
 	//
-	// We report the total stack size, more than we scan,
-	// because this number needs to line up with gcControllerState's
-	// stackScan and scannableStackSize fields.
-	//
-	// See the documentation on those fields for more information.
-	stackSize := gp.stack.hi - gp.stack.lo
+	// It is less than the allocated size (which is hi-lo).
+	var sp uintptr
+	if gp.syscallsp != 0 {
+		sp = gp.syscallsp // If in a system call this is the stack pointer (gp.sched.sp can be 0 in this case on Windows).
+	} else {
+		sp = gp.sched.sp
+	}
+	scannedSize := gp.stack.hi - sp
+
+	// Keep statistics for initial stack size calculation.
+	// Note that this accumulates the scanned size, not the allocated size.
+	p := getg().m.p.ptr()
+	p.scannedStackSize += uint64(scannedSize)
+	p.scannedStacks++
 
 	if isShrinkStackSafe(gp) {
 		// Shrink the stack if not much of it is being used.
@@ -894,7 +909,7 @@ func scanstack(gp *g, gcw *gcWork) int64 {
 	if state.buf != nil || state.cbuf != nil || state.freeBuf != nil {
 		throw("remaining pointer buffers")
 	}
-	return int64(stackSize)
+	return int64(scannedSize)
 }
 
 // Scan a stack frame: local variables and function arguments/results.
@@ -1141,8 +1156,10 @@ func gcDrainN(gcw *gcWork, scanWork int64) int64 {
 	// want to claim was done by this call.
 	workFlushed := -gcw.heapScanWork
 
+	// In addition to backing out because of a preemption, back out
+	// if the GC CPU limiter is enabled.
 	gp := getg().m.curg
-	for !gp.preempt && workFlushed+gcw.heapScanWork < scanWork {
+	for !gp.preempt && !gcCPULimiter.limiting() && workFlushed+gcw.heapScanWork < scanWork {
 		// See gcDrain comment.
 		if work.full == 0 {
 			gcw.balance()

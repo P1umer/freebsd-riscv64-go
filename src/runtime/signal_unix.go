@@ -397,7 +397,7 @@ func preemptM(mp *m) {
 //go:nosplit
 func sigFetchG(c *sigctxt) *g {
 	switch GOARCH {
-	case "arm", "arm64", "ppc64", "ppc64le", "riscv64":
+	case "arm", "arm64", "ppc64", "ppc64le", "riscv64", "s390x":
 		if !iscgo && inVDSOPage(c.sigpc()) {
 			// When using cgo, we save the g on TLS and load it from there
 			// in sigtramp. Just use that.
@@ -608,12 +608,24 @@ var testSigusr1 func(gp *g) bool
 func sighandler(sig uint32, info *siginfo, ctxt unsafe.Pointer, gp *g) {
 	_g_ := getg()
 	c := &sigctxt{info, ctxt}
+	mp := _g_.m
+
+	// Cgo TSAN (not the Go race detector) intercepts signals and calls the
+	// signal handler at a later time. When the signal handler is called, the
+	// memory may have changed, but the signal context remains old. The
+	// unmatched signal context and memory makes it unsafe to unwind or inspect
+	// the stack. So we ignore delayed non-fatal signals that will cause a stack
+	// inspection (profiling signal and preemption signal).
+	// cgo_yield is only non-nil for TSAN, and is specifically used to trigger
+	// signal delivery. We use that as an indicator of delayed signals.
+	// For delayed signals, the handler is called on the g0 stack (see
+	// adjustSignalStack).
+	delayedSignal := *cgo_yield != nil && mp != nil && _g_.stack == mp.g0.stack
 
 	if sig == _SIGPROF {
-		mp := _g_.m
 		// Some platforms (Linux) have per-thread timers, which we use in
 		// combination with the process-wide timer. Avoid double-counting.
-		if validSIGPROF(mp, c) {
+		if !delayedSignal && validSIGPROF(mp, c) {
 			sigprof(c.sigpc(), c.sigsp(), c.siglr(), gp, mp)
 		}
 		return
@@ -636,7 +648,7 @@ func sighandler(sig uint32, info *siginfo, ctxt unsafe.Pointer, gp *g) {
 		return
 	}
 
-	if sig == sigPreempt && debug.asyncpreemptoff == 0 {
+	if sig == sigPreempt && debug.asyncpreemptoff == 0 && !delayedSignal {
 		// Might be a preemption signal.
 		doSigPreempt(gp, c)
 		// Even if this was definitely a preemption signal, it

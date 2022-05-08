@@ -35,7 +35,7 @@ type pkgReader struct {
 
 	// offset for rewriting the given index into the output,
 	// but bitwise inverted so we can detect if we're missing the entry or not.
-	newindex []int
+	newindex []pkgbits.Index
 }
 
 func newPkgReader(pr pkgbits.PkgDecoder) *pkgReader {
@@ -46,13 +46,13 @@ func newPkgReader(pr pkgbits.PkgDecoder) *pkgReader {
 		pkgs:     make([]*types.Pkg, pr.NumElems(pkgbits.RelocPkg)),
 		typs:     make([]*types.Type, pr.NumElems(pkgbits.RelocType)),
 
-		newindex: make([]int, pr.TotalElems()),
+		newindex: make([]pkgbits.Index, pr.TotalElems()),
 	}
 }
 
 type pkgReaderIndex struct {
 	pr   *pkgReader
-	idx  int
+	idx  pkgbits.Index
 	dict *readerDict
 }
 
@@ -62,7 +62,7 @@ func (pri pkgReaderIndex) asReader(k pkgbits.RelocKind, marker pkgbits.SyncMarke
 	return r
 }
 
-func (pr *pkgReader) newReader(k pkgbits.RelocKind, idx int, marker pkgbits.SyncMarker) *reader {
+func (pr *pkgReader) newReader(k pkgbits.RelocKind, idx pkgbits.Index, marker pkgbits.SyncMarker) *reader {
 	return &reader{
 		Decoder: pr.NewDecoder(k, idx, marker),
 		p:       pr,
@@ -182,7 +182,7 @@ func (r *reader) posBase() *src.PosBase {
 	return r.inlPosBase(r.p.posBaseIdx(r.Reloc(pkgbits.RelocPosBase)))
 }
 
-func (pr *pkgReader) posBaseIdx(idx int) *src.PosBase {
+func (pr *pkgReader) posBaseIdx(idx pkgbits.Index) *src.PosBase {
 	if b := pr.posBases[idx]; b != nil {
 		return b
 	}
@@ -266,7 +266,7 @@ func (r *reader) pkg() *types.Pkg {
 	return r.p.pkgIdx(r.Reloc(pkgbits.RelocPkg))
 }
 
-func (pr *pkgReader) pkgIdx(idx int) *types.Pkg {
+func (pr *pkgReader) pkgIdx(idx pkgbits.Index) *types.Pkg {
 	if pkg := pr.pkgs[idx]; pkg != nil {
 		return pkg
 	}
@@ -295,13 +295,13 @@ func (r *reader) doPkg() *types.Pkg {
 	if pkg.Name == "" {
 		pkg.Name = name
 	} else {
-		assert(pkg.Name == name)
+		base.Assertf(pkg.Name == name, "package %q has name %q, but want %q", pkg.Path, pkg.Name, name)
 	}
 
 	if pkg.Height == 0 {
 		pkg.Height = height
 	} else {
-		assert(pkg.Height == height)
+		base.Assertf(pkg.Height == height, "package %q has height %v, but want %v", pkg.Path, pkg.Height, height)
 	}
 
 	return pkg
@@ -322,7 +322,7 @@ func (r *reader) typWrapped(wrapped bool) *types.Type {
 func (r *reader) typInfo() typeInfo {
 	r.Sync(pkgbits.SyncType)
 	if r.Bool() {
-		return typeInfo{idx: r.Len(), derived: true}
+		return typeInfo{idx: pkgbits.Index(r.Len()), derived: true}
 	}
 	return typeInfo{idx: r.Reloc(pkgbits.RelocType), derived: false}
 }
@@ -573,7 +573,7 @@ func (r *reader) obj() ir.Node {
 	return r.p.objIdx(idx, implicits, explicits)
 }
 
-func (pr *pkgReader) objIdx(idx int, implicits, explicits []*types.Type) ir.Node {
+func (pr *pkgReader) objIdx(idx pkgbits.Index, implicits, explicits []*types.Type) ir.Node {
 	rname := pr.newReader(pkgbits.RelocName, idx, pkgbits.SyncObject1)
 	_, sym := rname.qualifiedIdent()
 	tag := pkgbits.CodeObj(rname.Code(pkgbits.SyncCodeObj))
@@ -712,7 +712,7 @@ func (r *reader) mangle(sym *types.Sym) *types.Sym {
 	return sym.Pkg.Lookup(buf.String())
 }
 
-func (pr *pkgReader) objDictIdx(sym *types.Sym, idx int, implicits, explicits []*types.Type) *readerDict {
+func (pr *pkgReader) objDictIdx(sym *types.Sym, idx pkgbits.Index, implicits, explicits []*types.Type) *readerDict {
 	r := pr.newReader(pkgbits.RelocObjDict, idx, pkgbits.SyncObject1)
 
 	var dict readerDict
@@ -757,7 +757,7 @@ func (pr *pkgReader) objDictIdx(sym *types.Sym, idx int, implicits, explicits []
 
 	dict.itabs = make([]itabInfo2, r.Len())
 	for i := range dict.itabs {
-		typ := pr.typIdx(typeInfo{idx: r.Len(), derived: true}, &dict, true)
+		typ := pr.typIdx(typeInfo{idx: pkgbits.Index(r.Len()), derived: true}, &dict, true)
 		ifaceInfo := r.typInfo()
 
 		var lsym *obj.LSym
@@ -1636,7 +1636,9 @@ func (r *reader) expr() (res ir.Node) {
 		typ := r.exprType(false)
 
 		if typ, ok := typ.(*ir.DynamicType); ok && typ.Op() == ir.ODYNAMICTYPE {
-			return typed(typ.Type(), ir.NewDynamicTypeAssertExpr(pos, ir.ODYNAMICDOTTYPE, x, typ.X))
+			assert := ir.NewDynamicTypeAssertExpr(pos, ir.ODYNAMICDOTTYPE, x, typ.RType)
+			assert.ITab = typ.ITab
+			return typed(typ.Type(), assert)
 		}
 		return typecheck.Expr(ir.NewTypeAssertExpr(pos, x, typ.Type()))
 
@@ -1806,12 +1808,23 @@ func (r *reader) exprType(nilOK bool) ir.Node {
 
 	pos := r.pos()
 
+	lsymPtr := func(lsym *obj.LSym) ir.Node {
+		return typecheck.Expr(typecheck.NodAddr(ir.NewLinksymExpr(pos, lsym, types.Types[types.TUINT8])))
+	}
+
 	var typ *types.Type
-	var lsym *obj.LSym
+	var rtype, itab ir.Node
 
 	if r.Bool() {
-		itab := r.dict.itabs[r.Len()]
-		typ, lsym = itab.typ, itab.lsym
+		info := r.dict.itabs[r.Len()]
+		typ = info.typ
+
+		// TODO(mdempsky): Populate rtype unconditionally?
+		if typ.IsInterface() {
+			rtype = lsymPtr(info.lsym)
+		} else {
+			itab = lsymPtr(info.lsym)
+		}
 	} else {
 		info := r.typInfo()
 		typ = r.p.typIdx(info, r.dict, true)
@@ -1823,11 +1836,12 @@ func (r *reader) exprType(nilOK bool) ir.Node {
 			return n
 		}
 
-		lsym = reflectdata.TypeLinksym(typ)
+		rtype = lsymPtr(reflectdata.TypeLinksym(typ))
 	}
 
-	ptr := typecheck.Expr(typecheck.NodAddr(ir.NewLinksymExpr(pos, lsym, types.Types[types.TUINT8])))
-	return typed(typ, ir.NewDynamicType(pos, ptr))
+	dt := ir.NewDynamicType(pos, rtype)
+	dt.ITab = itab
+	return typed(typ, dt)
 }
 
 func (r *reader) op() ir.Op {
