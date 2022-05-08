@@ -1,0 +1,1 @@
+# freebsd-riscv64-go
